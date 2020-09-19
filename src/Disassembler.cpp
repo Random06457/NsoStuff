@@ -262,7 +262,7 @@ void Disassembler::disassemble()
     WRITE_SECTION("mod0",
         fprintf(f,".section .mod0, \"a\", %%progbits\n\n");
         fprintf(f, "__mod0_start:\n");
-        fprintf(f, ".ascii \"%s\"\n", m_Nso->m_Mod0->magic.toString().c_str());
+        fprintf(f, ".ascii \"%c%c%c%c\"\n", m_Nso->m_Mod0->magic.name[0], m_Nso->m_Mod0->magic.name[1], m_Nso->m_Mod0->magic.name[2], m_Nso->m_Mod0->magic.name[3]);
         fprintf(f, ".word 0x%08X\n", m_Nso->m_Mod0->dynOff);
         fprintf(f, ".word 0x%08X\n", m_Nso->m_Mod0->bssStartOff);
         fprintf(f, ".word 0x%08X\n", m_Nso->m_Mod0->bssEndOff);

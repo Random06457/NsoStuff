@@ -4,6 +4,7 @@
 #include "Utils.hpp"
 #include "Nso.hpp"
 #include "Disassembler.hpp"
+#include <memory>
 
 #define ASM_DIR "out"
 
@@ -26,14 +27,12 @@ int main(int argc, char** argv)
     if (!Utils::FileExists(argv[1]))
         showUsage("Cannot open file");
 
-    Nso* nso = new Nso(argv[1]);
+    std::unique_ptr<Nso> nso = std::make_unique<Nso>(argv[1]);
     nso->printInfo();
-    //nso.saveDecompressed("out");
+    //nso->saveDecompressed("out");
 
     mkdir(ASM_DIR, 0777);
-    Disassembler::process(nso, ASM_DIR);
-
-    delete nso;
+    Disassembler::process(nso.get(), ASM_DIR);
     
     return 0;
 }
