@@ -6,7 +6,6 @@
 #include "Nso.hpp"
 #include "Utils.hpp"
 #include <algorithm>
-#include "dwarf.h"
 
 
 bool Nso::SegmentHash::isValid(void* mem, SegmentHeader& hdr)
@@ -425,6 +424,7 @@ void Nso::findElfSections()
         gnuHash->nbuckets * sizeof(u32) +
         (dynSymCount - gnuHash->symndx) * sizeof(u32);
     */
+    //m_Sections.push_back(Section(dynGnuHash->d_un, size, ".gnu.hash"));
     m_Sections.push_back(Section(dynGnuHash->d_un, dynSymAddr - dynGnuHash->d_un, ".gnu.hash"));
 
     m_Sections.push_back(Section(dynSymAddr, dynSymSize, ".dynsym"));
@@ -559,13 +559,13 @@ void Nso::findElfSections()
             switch (curSegment)
             {
             case SegmentType::text:
-                name = ".text" + (textCount++ == 0 ? "" : std::to_string(textCount)) + " /* App Data */ ";
+                name = ".text" + (textCount++ == 0 ? "" : std::to_string(textCount));// + " /* App Data */ ";
                 break;
             case SegmentType::rodata:
-                name = ".rodata" + (rodataCount++ == 0 ? "" : std::to_string(rodataCount)) + " /* App Data */ ";
+                name = ".rodata" + (rodataCount++ == 0 ? "" : std::to_string(rodataCount));// + " /* App Data */ ";
                 break;
             case SegmentType::data:
-                name = ".data" + (dataCount++ == 0 ? "" : std::to_string(dataCount)) + " /* App Data */ ";
+                name = ".data" + (dataCount++ == 0 ? "" : std::to_string(dataCount));// + " /* App Data */ ";
                 break;
             
             default:
@@ -596,4 +596,17 @@ Nso::Section* Nso::getSection(std::string name)
     }
 
     return nullptr;
+}
+
+size_t Nso::getAppSectionCount(std::string name)
+{
+    size_t count = 0;
+
+    for (size_t i = 0; i < m_Sections.size(); i++)
+    {
+        if (m_Sections[i].name() == name + ((count == 0) ? "" : std::to_string(count)));
+            count++;
+    }
+
+    return count;
 }

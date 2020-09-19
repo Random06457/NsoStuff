@@ -29,9 +29,4 @@ clean:
 	rm -rf $(BUILD) $(TARGET)
 	
 asm:
-	aarch64-none-elf-g++ $(ARCH) -c out/main.text.s -o out/main.text.o
-#	aarch64-none-elf-g++ $(ARCH) -c out/main.rodata.s -o out/main.rodata.o
-#	aarch64-none-elf-g++ $(ARCH) -c out/main.data.s -o out/main.data.o
-#	aarch64-none-elf-g++ $(ARCH) -c out/main.bss.s -o out/main.bss.o
-	
-#	aarch64-none-elf-g++ $(ARCH) out/main.text.o out/main.rodata.o out/main.data.o out/main.bss.o -o out/main.elf
+	aarch64-none-elf-g++ -L $(ARCH) -T out/app.ld out/full.s -o out/full.o -nostartfiles

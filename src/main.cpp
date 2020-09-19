@@ -30,8 +30,8 @@ int main(int argc, char** argv)
     nso->printInfo();
     //nso.saveDecompressed("out");
 
-    //mkdir(ASM_DIR, 0777);
-    //Disassembler::process(nso, ASM_DIR);
+    mkdir(ASM_DIR, 0777);
+    Disassembler::process(nso, ASM_DIR);
 
     delete nso;
     

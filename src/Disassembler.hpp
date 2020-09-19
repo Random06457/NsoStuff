@@ -52,23 +52,18 @@ private:
     void findSymRefs();
     void generateSymbols();
     void disassemble();
+    void writeLd();
     
-    void writeTextAsm(FILE* file, size_t size, const char* sectionName);
-    void writeDataAsm();
-    void writeRodataAsm();
-    void writeBssAsm();
+    void writeTextAsm(FILE* f, size_t start, size_t size);
+    void writeDataAsm(FILE* f, size_t start, size_t size, bool bss = false);
 
     Disassembler::Symbol* getSymbol(size_t addr);
     
 
 private:
-    FILE* m_TextFile;
-    FILE* m_RodataFile;
-    FILE* m_DataFile;
-    FILE* m_BssFile;
     Nso* m_Nso;
+    std::string m_AsmDir;
     csh m_Handle;
-    size_t m_CurAddr;
     std::vector<Disassembler::SymRef> m_SymRefs;
     std::vector<Disassembler::Symbol> m_Syms;
 };

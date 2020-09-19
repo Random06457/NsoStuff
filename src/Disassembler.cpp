@@ -8,13 +8,9 @@
 #define ELEMENT_EXISTS(vec, element) (std::find(vec.begin(), vec.end(), element) != vec.end())
 
 Disassembler::Disassembler(Nso* nso, std::string asmDir) :
-    m_TextFile(nullptr),
-    m_RodataFile(nullptr),
-    m_DataFile(nullptr),
-    m_BssFile(nullptr),
     m_Nso(nso),
+    m_AsmDir(asmDir),
     m_Handle(0),
-    m_CurAddr(m_Nso->m_Header.text.addr),
     m_SymRefs(),
     m_Syms()
 {
@@ -23,25 +19,11 @@ Disassembler::Disassembler(Nso* nso, std::string asmDir) :
         throw std::runtime_error("cs_open failed");
 
     cs_option(m_Handle, CS_OPT_DETAIL, CS_OPT_ON);
-
-    /*
-    m_TextFile = fopen((asmDir + "/main.text.s").c_str(), "wb");
-    m_RodataFile = fopen((asmDir + "/main.rodata.s").c_str(), "wb");
-    m_DataFile = fopen((asmDir + "/main.data.s").c_str(), "wb");
-    m_BssFile = fopen((asmDir + "/main.bss.s").c_str(), "wb");
-    */
-    m_TextFile = fopen((asmDir + "/rtld/main.s").c_str(), "wb");
 }
 
 Disassembler::~Disassembler()
 {
     cs_close(&m_Handle);
-    fclose(m_TextFile);
-    /*
-    fclose(m_RodataFile);
-    fclose(m_DataFile);
-    fclose(m_BssFile);
-    */
 }
 
 void Disassembler::process(Nso* nso, std::string asmDir)
@@ -54,42 +36,266 @@ void Disassembler::process(Nso* nso, std::string asmDir)
     printf("Generating Symbol List...\n");
     dis->generateSymbols();
 
-    //printf("Finding ELF sections...\n");
-    //dis->findElfSections();
+    printf("Writing linker script...\n");
+    dis->writeLd();
 
     printf("Disassembling...\n");
-    //dis->disassemble();
+    dis->disassemble();
 
     printf("Done!\n");
 
     delete dis;
 }
 
+void Disassembler::writeLd()
+{
+    FILE* f = fopen((m_AsmDir + "/app.ld").c_str(), "wb");
+
+    fprintf(f, "OUTPUT_FORMAT(elf64-littleaarch64)\n");
+    fprintf(f, "OUTPUT_ARCH(aarch64)\n");
+    fprintf(f, "\n");
+
+    /*
+    PHDRS
+    {
+        text PT_LOAD FLAGS(5);
+        rodata PT_LOAD FLAGS(4);
+        data PT_LOAD FLAGS(6);
+        dynamic PT_DYNAMIC;
+    }
+    */
+    fprintf(f, "PHDRS\n");
+    fprintf(f, "{\n");
+    fprintf(f, "    text PT_LOAD FLAGS(5);\n");
+    fprintf(f, "    rodata PT_LOAD FLAGS(4);\n");
+    fprintf(f, "    data PT_LOAD FLAGS(6);\n");
+    fprintf(f, "    dynamic PT_DYNAMIC;\n");
+    fprintf(f, "}\n");
+    fprintf(f, "\n");
+
+    fprintf(f, "SECTIONS\n");
+    fprintf(f, "{\n");
+    fprintf(f, "    PROVIDE(__start__ = 0x0);\n");
+    fprintf(f, "    . = __start__;\n");
+    fprintf(f, "\n");
+
+    for (auto s : m_Nso->m_Sections)
+    {
+        if (s.isPadding())
+        {
+            fprintf(f, "\n");
+            fprintf(f, "    . = ALIGN(0x%lX);\n", s.m_Align);
+            fprintf(f, "\n");
+        }
+        else
+        {
+            std::string curSeg;
+            switch (m_Nso->getSegmentType(s.start()))
+            {
+            case Nso::SegmentType::text:
+                curSeg = "text";
+                break;
+            case Nso::SegmentType::rodata:
+                curSeg = "rodata";
+                break;
+            case Nso::SegmentType::data:
+            case Nso::SegmentType::bss:
+                curSeg = "data";
+                break;
+            
+            default:
+                throw std::runtime_error("Invalid Segment");
+            }
+            fprintf(f, "    %s : { *(%s) } :%s\n", s.name().c_str(), s.name().c_str(), curSeg.c_str());
+        }
+    }
+    fprintf(f, "\n");
+    fprintf(f, "    __end__ = ABSOLUTE(.);\n");
+    fprintf(f, "}\n");
+
+    fclose(f);
+}
 
 void Disassembler::disassemble()
 {
+    FILE* f;
+    Nso::Section* s;
+
+    f = fopen((m_AsmDir + "/full.s").c_str(), "wb");
+    #define WRITE_SECTION(name, ...) s = m_Nso->getSection("." name); \
+        if (s) { \
+            printf("Writing ." name "...\n"); \
+            __VA_ARGS__; \
+        }
     /*
-    printf("Writing .crt0...\n");
-    writeTextAsm(m_TextFile, m_Nso->getElf64Dyn(DT_INIT)->d_un - m_CurAddr, ".crt0");
-
-    printf("Writing .init...\n");
-    writeTextAsm(m_TextFile, m_Nso->getElf64Dyn(DT_FINI)->d_un - m_CurAddr, ".init");
-    
-    printf("Writing .fini...\n");
-    writeTextAsm(m_TextFile, getFiniSize(), ".fini");
-
-    printf("Writing .text...\n");
-    writeTextAsm(m_TextFile, getFiniSize(), ".text");
+    #define WRITE_SECTION(name, ...) s = m_Nso->getSection("." name); \
+        if (s) { \
+            printf("Writing ." name "...\n"); \
+            f = fopen((m_AsmDir + "/" name ".s").c_str(), "wb"); \
+            __VA_ARGS__; \
+            fclose(f); \
+        }
     */
+    
+    /* .text sections */ 
+    WRITE_SECTION("crt0",
+        fprintf(f,".section .crt0, \"ax\", %%progbits\n\n");
+        writeTextAsm(f, s->start(), 4);
+        fprintf(f, "/* %08lX */ .word __mod0_start\n\n", s->start()+4);
+        writeTextAsm(f, s->start()+8, s->size()-8);
+    );
+
+    WRITE_SECTION("init",
+        fprintf(f,".section .init, \"ax\", %%progbits\n\n");
+        writeTextAsm(f, s->start(), s->size())
+    );
+    WRITE_SECTION("fini", 
+        fprintf(f,".section .fini, \"ax\", %%progbits\n\n");
+        writeTextAsm(f, s->start(), s->size())
+    );
+    WRITE_SECTION("plt",
+        fprintf(f,".section .plt, \"ax\", %%progbits\n\n");
+        writeTextAsm(f, s->start(), s->size())
+    );
+    
+    WRITE_SECTION("text",
+        fprintf(f,".section .text, \"ax\", %%progbits\n\n");
+        writeTextAsm(f, s->start(), s->size())
+    );
+    WRITE_SECTION("text2",
+        fprintf(f,".section .text2, \"ax\", %%progbits\n\n");
+        writeTextAsm(f, s->start(), s->size())
+    );
+
+    /* .rodata sections */ 
+
+    WRITE_SECTION("module_name",
+        fprintf(f,".section .module_name, \"a\", %%progbits\n\n");
+        fprintf(f, ".word 0x%X\n", *m_Nso->mem<u32>(s->start() + 0));
+        char* name = m_Nso->mem<char>(s->start() + 8);
+        u32 nameSize = *m_Nso->mem<u32>(s->start() + 4);
+        u32 calcNameSize = strlen(name);
+        if (nameSize == calcNameSize)
+            fprintf(f, ".word module_name_len\n");
+        else
+            fprintf(f, ".word 0x%X\n", nameSize);
+        
+        fprintf(f, "module_name: .asciz \"%s\"\n", name);
+        if (nameSize == calcNameSize)
+            fprintf(f, "module_name_len = . - module_name - 1\n");
+    );
+
+    WRITE_SECTION("note.gnu.build-id", 
+        fprintf(f,".section .note.gnu.build-id, \"a\", %%progbits\n\n");
+        fprintf(f, ".word 0x%X /* n_namesz */\n", m_Nso->m_GnuBuildIdNote->n_namesz);
+        fprintf(f, ".word 0x%X /* n_descsz */\n", m_Nso->m_GnuBuildIdNote->n_descsz);
+        fprintf(f, ".word 0x%X /* n_type */\n", m_Nso->m_GnuBuildIdNote->n_type);
+        fprintf(f, ".asciz \"%s\"\n", m_Nso->m_GnuBuildIdNote->data);
+        if (m_Nso->m_GnuBuildIdNote->n_descsz > 0)
+            fprintf(f, ".byte 0x%02X", (u8)m_Nso->m_GnuBuildIdNote->data[m_Nso->m_GnuBuildIdNote->n_namesz]);
+        for (size_t i = 1; i < m_Nso->m_GnuBuildIdNote->n_descsz; i++)
+            fprintf(f, ",0x%02X", (u8)m_Nso->m_GnuBuildIdNote->data[m_Nso->m_GnuBuildIdNote->n_namesz+i]);
+        fprintf(f, "\n");
+    );
+
+    WRITE_SECTION("hash", 
+        fprintf(f,".section .hash, \"a\", %%progbits\n\n");
+        auto hash = m_Nso->mem<Elf64_Hash>(s->start());
+        fprintf(f, ".word 0x%X /* nbuckets */\n", hash->nbuckets);
+        fprintf(f, ".word 0x%X /* nchains */\n", hash->nchains);
+        fprintf(f, "\n");
+        fprintf(f, "/* bucket */\n");
+        for (size_t i = 0; i < hash->nbuckets; i++)
+            fprintf(f, ".word 0x%X\n", hash->data[i]);
+        fprintf(f, "\n");
+        fprintf(f, "/* chain */\n");
+        for (size_t i = 0; i < hash->nchains; i++)
+            fprintf(f, ".word 0x%X\n", hash->data[hash->nbuckets+i]);
+    );
+
+    WRITE_SECTION("gnu.hash", 
+        fprintf(f,".section .gnu.hash, \"a\", %%progbits\n\n");
+        auto hash = m_Nso->mem<Elf64_GnuHash>(s->start());
+        fprintf(f, ".word 0x%X /* nbuckets */\n", hash->nbuckets);
+        fprintf(f, ".word 0x%X /* symndx */\n", hash->symndx);
+        fprintf(f, ".word 0x%X /* maskwords */\n", hash->maskwords);
+        fprintf(f, ".word 0x%X /* shift */\n", hash->shift);
+        fprintf(f, "\n");
+
+        size_t curSize = sizeof(Elf64_GnuHash);
+
+        u64* indexes = m_Nso->mem<u64>(s->start() + curSize);
+        fprintf(f, "/* indexes */\n");
+        for (size_t i = 0; i < hash->maskwords; i++)
+            fprintf(f, ".quad 0x%llX\n", indexes[i]);
+        fprintf(f, "\n");
+
+        curSize += hash->maskwords * sizeof(u64);
+
+        u32* buckets = reinterpret_cast<u32*>(indexes + hash->maskwords);
+        fprintf(f, "/* bucket */\n");
+        for (size_t i = 0; i < hash->nbuckets; i++)
+            fprintf(f, ".word 0x%X\n", buckets[i]);  
+        fprintf(f, "\n");
+
+        curSize += hash->nbuckets * sizeof(u32);
+        
+        // use s->size() - curSize to handle cases where .gnu.hash is invalid (for example sp2 rtld)
+        u32* chains = buckets + hash->nbuckets;
+        fprintf(f, "/* chain */\n");
+        for (size_t i = 0; i < (s->size() - curSize) / sizeof(u32); i++)
+            fprintf(f, ".word 0x%X\n", chains[i]);
+    );
+
+    WRITE_SECTION("eh_frame_hdr", 
+        fprintf(f,".section .eh_frame_hdr, \"a\", %%progbits\n\n");
+        auto ehFrameHdr = m_Nso->mem<EhFrameHdr>(s->start());
+        fprintf(f, "eh_frame_hdr_start:\n");
+        fprintf(f, ".byte 0x%X /* version */\n", ehFrameHdr->version);
+        fprintf(f, ".byte 0x%X /* eh_frame_ptr_enc */\n", ehFrameHdr->eh_frame_ptr_enc);
+        fprintf(f, ".byte 0x%X /* fde_count_enc */\n", ehFrameHdr->fde_count_enc);
+        fprintf(f, ".byte 0x%X /* table_enc */\n", ehFrameHdr->table_enc);
+        fprintf(f, ".word 0x%X /* eh_frame_ptr */\n", ehFrameHdr->eh_frame_ptr);
+        fprintf(f, ".word 0x%X /* fde_count */\n", ehFrameHdr->fde_count);
+    );
+
+    WRITE_SECTION("mod0",
+        fprintf(f,".section .mod0, \"a\", %%progbits\n\n");
+        fprintf(f, "__mod0_start:\n");
+        fprintf(f, ".ascii \"%s\"\n", m_Nso->m_Mod0->magic.toString().c_str());
+        fprintf(f, ".word 0x%08X\n", m_Nso->m_Mod0->dynOff);
+        fprintf(f, ".word 0x%08X\n", m_Nso->m_Mod0->bssStartOff);
+        fprintf(f, ".word 0x%08X\n", m_Nso->m_Mod0->bssEndOff);
+        fprintf(f, ".word 0x%08X\n", m_Nso->m_Mod0->ehFrameHdrStartOff);
+        fprintf(f, ".word 0x%08X\n", m_Nso->m_Mod0->ehFrameHdrEndOff);
+        fprintf(f, ".word 0x%08X\n", m_Nso->m_Mod0->modObjectOff);
+    );
 
 
+    WRITE_SECTION("got",
+        fprintf(f, ".section .got, \"aw\", %%progbits\n\n");
+        writeDataAsm(f, s->start(), s->size());
+    );
+    WRITE_SECTION("got.plt",
+        fprintf(f, ".section .got.plt, \"aw\", %%progbits\n\n");
+        writeDataAsm(f, s->start(), s->size());
+    );
 
-    printf("Writing .rodata...\n");
-    writeRodataAsm();
-    printf("Writing .data...\n");
-    writeDataAsm();
-    printf("Writing .bss...\n");
-    writeBssAsm();
+    // App data
+    WRITE_SECTION("rodata", 
+        fprintf(f, ".section .rodata, \"a\", %%progbits\n\n");
+        writeDataAsm(f, s->start(), s->size());
+    );
+    WRITE_SECTION("data", 
+        fprintf(f, ".section .data, \"aw\", %%progbits\n\n");
+        writeDataAsm(f, s->start(), s->size());
+    );
+    WRITE_SECTION("bss", 
+        fprintf(f, ".section .bss,\"aw\"\n\n");
+        writeDataAsm(f, s->start(), s->size(), true);
+    );
+
+    fclose(f);
 }
 
 
@@ -300,17 +506,16 @@ void Disassembler::generateSymbols()
     );
 }
 
-void Disassembler::writeTextAsm(FILE* file, size_t size, const char* sectionName)
+void Disassembler::writeTextAsm(FILE* f, size_t start, size_t size)
 {
-    fprintf(file, ".section %s, \"ax\", %%progbits\n\n", sectionName);
-
     cs_insn* ins;
 
-    size_t endAddr = m_CurAddr + size;
+    size_t endAddr = start + size;
+    size_t cur = start;
 
-    while (m_CurAddr < endAddr)
+    while (cur < endAddr)
     {
-        size_t count = cs_disasm(m_Handle, m_Nso->text<u8>(m_CurAddr), endAddr - m_CurAddr, m_CurAddr, 0, &ins);
+        size_t count = cs_disasm(m_Handle, m_Nso->text<u8>(cur), endAddr - cur, cur, 0, &ins);
         size_t j = 0;
         for (size_t i = 0; i < count; i++) {
             cs_arm64_op* ops = ins[i].detail->arm64.operands;
@@ -318,9 +523,9 @@ void Disassembler::writeTextAsm(FILE* file, size_t size, const char* sectionName
             // write label
             auto curSym = getSymbol(ins[i].address);
             if (curSym)
-                fprintf(file, "%s:\n", curSym->m_Name.c_str());
+                fprintf(f, "%s:\n", curSym->m_Name.c_str());
             // write mnemonic
-            fprintf(file, "/* 0x%08lx */ %s ", ins[i].address, ins[i].mnemonic);
+            fprintf(f, "/* 0x%08lx */ %s ", ins[i].address, ins[i].mnemonic);
 
 
             while (j < m_SymRefs.size() && m_SymRefs[j].insAddr < ins[i].address)
@@ -346,30 +551,30 @@ void Disassembler::writeTextAsm(FILE* file, size_t size, const char* sectionName
                 {
                 case ARM64_INS_ADRP:
                     // adrp x21, #0x3000
-                    fprintf(file, "%s, %s\n", cs_reg_name(m_Handle, ops[0].reg), targetSym);
+                    fprintf(f, "%s, %s\n", cs_reg_name(m_Handle, ops[0].reg), targetSym);
                     break;
                 case ARM64_INS_LDR:
                     // ldr x21, [x21, #0x198]
-                    fprintf(file, "%s, [%s, #:lo12:%s]\n", cs_reg_name(m_Handle, ops[0].reg), cs_reg_name(m_Handle, ops[1].mem.base), targetSym);
+                    fprintf(f, "%s, [%s, #:lo12:%s]\n", cs_reg_name(m_Handle, ops[0].reg), cs_reg_name(m_Handle, ops[1].mem.base), targetSym);
                     break;
                 case ARM64_INS_ADD:
                     // add x8, x8, #0x100
-                    fprintf(file, "%s, %s, #:lo12:%s\n", cs_reg_name(m_Handle, ops[0].reg), cs_reg_name(m_Handle, ops[1].reg), targetSym);
+                    fprintf(f, "%s, %s, #:lo12:%s\n", cs_reg_name(m_Handle, ops[0].reg), cs_reg_name(m_Handle, ops[1].reg), targetSym);
                     break;
                 case ARM64_INS_B:
                 case ARM64_INS_BL:
-                    fprintf(file, "%s\n", targetSym);
+                    fprintf(f, "%s\n", targetSym);
                     break;
 
                 case ARM64_INS_CBNZ:
                 case ARM64_INS_CBZ:
                     // cbz x2, #0x478
-                    fprintf(file, "%s, %s\n", cs_reg_name(m_Handle, ops[0].reg), targetSym);
+                    fprintf(f, "%s, %s\n", cs_reg_name(m_Handle, ops[0].reg), targetSym);
                     break;
                 case ARM64_INS_TBZ:
                 case ARM64_INS_TBNZ:
                     // tbnz w0, #0x1f, #0x400006eec
-                    fprintf(file, "%s, #0x%lx, %s\n", cs_reg_name(m_Handle, ops[0].reg), ops[1].imm, targetSym);
+                    fprintf(f, "%s, #0x%lx, %s\n", cs_reg_name(m_Handle, ops[0].reg), ops[1].imm, targetSym);
                     break;
                 
                 default:
@@ -379,94 +584,43 @@ void Disassembler::writeTextAsm(FILE* file, size_t size, const char* sectionName
             else 
             {
                 // write operands normal
-                fprintf(file, "%s\n", ins[i].op_str);
+                fprintf(f, "%s\n", ins[i].op_str);
                 if (ins[i].id == ARM64_INS_RET)
-                    fprintf(file, "\n");
+                    fprintf(f, "\n");
             }
+
+            cur += ins[i].size;
         }
     
         
         cs_free(ins, count);
-        m_CurAddr += count*4;
-        if (m_CurAddr < endAddr)
+        if (cur < endAddr)
         {
-            fprintf(file, "\n/* 0x%08lx */ .word 0x%08X\n\n", m_CurAddr, *m_Nso->text<u32>(m_CurAddr));
-            m_CurAddr += 4;
+            fprintf(f, "\n/* 0x%08lx */ .word 0x%08X\n\n", cur, *m_Nso->text<u32>(cur));
+            cur += 4;
         }
     }
-    
-    fprintf(file, "\n");
 }
 
-void Disassembler::writeRodataAsm()
+void Disassembler::writeDataAsm(FILE* f, size_t start, size_t size, bool bss)
 {
-    fprintf(m_TextFile, ".section .rodata, \"a\", %%progbits\n\n");
-
+    // this is temporary
     for (size_t i = 0; i < m_Syms.size(); i++)
     {
-        if (m_Syms[i].m_Addr >= m_Nso->m_Header.rodata.addr && m_Syms[i].m_Addr < m_Nso->m_Header.rodata.addr + m_Nso->m_Header.rodata.size)
+        if (m_Syms[i].m_Addr >= start && m_Syms[i].m_Addr < start + size)
         {
-            fprintf(m_TextFile, "/* 0x%08lX */\n", m_Syms[i].m_Addr);
-            fprintf(m_TextFile, "%s:\n", m_Syms[i].m_Name.c_str());
+            fprintf(f, "/* 0x%08lX */\n", m_Syms[i].m_Addr);
+            fprintf(f, "%s:\n", m_Syms[i].m_Name.c_str());
             for (size_t j = i+1; j < m_Syms.size(); j++)
             {
                 if (m_Syms[i].m_Addr == m_Syms[j].m_Addr)
                 {
-                    fprintf(m_TextFile, "%s:\n", m_Syms[j].m_Name.c_str());
+                    fprintf(f, "%s:\n", m_Syms[j].m_Name.c_str());
                     i = j;
                 }
             }
-            fprintf(m_TextFile, "\n");
+            fprintf(f, "\n");
         }
     }
-    fprintf(m_TextFile, "\n");
-}
-
-void Disassembler::writeDataAsm()
-{
-    fprintf(m_TextFile, ".section .data, \"aw\", %%progbits\n\n");
-
-    for (size_t i = 0; i < m_Syms.size(); i++)
-    {
-        if (m_Syms[i].m_Addr >= m_Nso->m_Header.data.addr && m_Syms[i].m_Addr < m_Nso->m_Header.data.addr + m_Nso->m_Header.data.size)
-        {
-            fprintf(m_TextFile, "/* 0x%08lX */\n", m_Syms[i].m_Addr);
-            fprintf(m_TextFile, "%s:\n", m_Syms[i].m_Name.c_str());
-            for (size_t j = i+1; j < m_Syms.size(); j++)
-            {
-                if (m_Syms[i].m_Addr == m_Syms[j].m_Addr)
-                {
-                    fprintf(m_TextFile, "%s:\n", m_Syms[j].m_Name.c_str());
-                    i = j;
-                }
-            }
-            fprintf(m_TextFile, "\n");
-        }
-    }
-    fprintf(m_TextFile, "\n");
-}
-
-void Disassembler::writeBssAsm()
-{
-    fprintf(m_TextFile, ".section .bss,\"aw\"\n\n");
-
-    u32 bssStart = m_Nso->m_Header.data.addr + m_Nso->m_Header.data.size;
-    for (size_t i = 0; i < m_Syms.size(); i++)
-    {
-        if (m_Syms[i].m_Addr >= bssStart && m_Syms[i].m_Addr < bssStart + m_Nso->m_Header.bssSize)
-        {
-            fprintf(m_TextFile, "/* 0x%08lX */\n", m_Syms[i].m_Addr);
-            fprintf(m_TextFile, "%s:\n", m_Syms[i].m_Name.c_str());
-            for (size_t j = i+1; j < m_Syms.size(); j++)
-            {
-                if (m_Syms[i].m_Addr == m_Syms[j].m_Addr)
-                {
-                    fprintf(m_TextFile, "%s:\n", m_Syms[j].m_Name.c_str());
-                    i = j;
-                }
-            }
-            fprintf(m_TextFile, "\n");
-        }
-    }
-    fprintf(m_TextFile, "\n");
+    fprintf(f, "\n");
 }

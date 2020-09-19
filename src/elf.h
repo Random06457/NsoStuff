@@ -266,12 +266,14 @@ struct Elf64_Nhdr {
   u32 n_namesz;                  /* Length of the note's name.  */
   u32 n_descsz;                  /* Length of the note's descriptor.  */
   u32 n_type;                    /* Type of the note.  */
+  char data[];
 };
 
 struct Elf64_Hash
 {
     u32 nbuckets;
     u32 nchains;
+    u32 data[];
 };
 
 struct Elf64_GnuHash

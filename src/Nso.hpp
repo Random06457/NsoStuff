@@ -2,6 +2,8 @@
 #include "Utils.hpp"
 #include <cstddef>
 #include "elf.h"
+#include "dwarf.h"
+#include <stdexcept>
 
 #define ALIGN_MEM(addr) (((addr) + 0xFFF) & ~0xFFF) 
 #define ALIGN4(addr) (((addr) + 3) & ~3)
@@ -177,6 +179,7 @@ public:
 
     inline u32 getMod0Pointer() { return *mem<u32>(4); }
     Section* getSection(std::string name);
+    size_t getAppSectionCount(std::string name);
     SegmentType getSegmentType(size_t addr);
 
 private:
