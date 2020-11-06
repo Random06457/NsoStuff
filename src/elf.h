@@ -202,10 +202,6 @@ struct Elf64_Rela {
 #define R_AARCH64_TLS_DTPREL32          1031
 #define R_AARCH64_IRELATIVE             1032
 
-struct Elf64_Dyn {
-    u64 d_tag;
-    u64 d_un;
-};
 
 #define DT_NULL         0               /* Marks end of dynamic section */
 #define DT_NEEDED       1               /* Name of needed library */
@@ -261,6 +257,74 @@ struct Elf64_Dyn {
 #define DT_ADDRRNGHI    0x6ffffeff
 #define DT_RELACOUNT    0x6ffffff9
 #define DT_RELCOUNT     0x6ffffffa
+
+struct Elf64_Dyn {
+    u64 d_tag;
+    u64 d_un;
+
+    static const char* getTagName(u64 tag)
+    {
+        #define CASE_DT(value) case value : return #value
+
+        switch (tag)
+        {
+            CASE_DT(DT_NULL);
+            CASE_DT(DT_NEEDED);
+            CASE_DT(DT_PLTRELSZ);
+            CASE_DT(DT_PLTGOT);
+            CASE_DT(DT_HASH);
+            CASE_DT(DT_STRTAB);
+            CASE_DT(DT_SYMTAB);
+            CASE_DT(DT_RELA);
+            CASE_DT(DT_RELASZ);
+            CASE_DT(DT_RELAENT);
+            CASE_DT(DT_STRSZ);
+            CASE_DT(DT_SYMENT);
+            CASE_DT(DT_INIT);
+            CASE_DT(DT_FINI);
+            CASE_DT(DT_SONAME);
+            CASE_DT(DT_RPATH);
+            CASE_DT(DT_SYMBOLIC);
+            CASE_DT(DT_REL);
+            CASE_DT(DT_RELSZ);
+            CASE_DT(DT_RELENT);
+            CASE_DT(DT_PLTREL);
+            CASE_DT(DT_DEBUG);
+            CASE_DT(DT_TEXTREL);
+            CASE_DT(DT_JMPREL);
+            CASE_DT(DT_BIND_NOW);
+            CASE_DT(DT_INIT_ARRAY);
+            CASE_DT(DT_FINI_ARRAY);
+            CASE_DT(DT_INIT_ARRAYSZ);
+            CASE_DT(DT_FINI_ARRAYSZ);
+            CASE_DT(DT_RUNPATH);
+            CASE_DT(DT_FLAGS);
+            CASE_DT(DT_PREINIT_ARRAY);
+            CASE_DT(DT_PREINIT_ARRAYSZ);
+            CASE_DT(DT_NUM);
+            CASE_DT(DT_LOOS);
+            CASE_DT(DT_HIOS);
+            CASE_DT(DT_LOPROC);
+            CASE_DT(DT_HIPROC);
+            CASE_DT(DT_ADDRRNGLO);
+            CASE_DT(DT_GNU_HASH);
+            CASE_DT(DT_TLSDESC_PLT);
+            CASE_DT(DT_TLSDESC_GOT);
+            CASE_DT(DT_GNU_CONFLICT);
+            CASE_DT(DT_GNU_LIBLIST);
+            CASE_DT(DT_CONFIG);
+            CASE_DT(DT_DEPAUDIT);
+            CASE_DT(DT_AUDIT);
+            CASE_DT(DT_PLTPAD);
+            CASE_DT(DT_MOVETAB);
+            CASE_DT(DT_SYMINFO);
+            CASE_DT(DT_RELACOUNT);
+            CASE_DT(DT_RELCOUNT);
+        
+        default: return nullptr;
+        }
+    }
+};
 
 struct Elf64_Nhdr {
   u32 n_namesz;                  /* Length of the note's name.  */

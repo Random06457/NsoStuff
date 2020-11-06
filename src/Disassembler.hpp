@@ -2,6 +2,7 @@
 
 #include "Nso.hpp"
 #include <capstone/capstone.h>
+#include <functional>
 
 class Disassembler
 {
@@ -39,6 +40,22 @@ private:
         size_t m_Addr;
         std::string m_Name;
     };
+
+    struct SectionHandler
+    {
+        std::string m_Name;
+        const char* m_Perms;
+        bool m_Progbits;
+        std::function<void(FILE*, Nso::Section*)> m_Handler;
+
+        SectionHandler(const char* name, const char* perms, bool progbits, std::function<void(FILE*, Nso::Section*)> handler) :
+            m_Name(name),
+            m_Perms(perms),
+            m_Progbits(progbits),
+            m_Handler(handler)
+        {
+        }
+};
     
 
 private:
@@ -57,6 +74,10 @@ private:
     void writeTextAsm(FILE* f, size_t start, size_t size);
     void writeDataAsm(FILE* f, size_t start, size_t size, bool bss = false);
 
+    void addTextSectionHandler(const char* name);
+    void addDataSectionHandler(const char* name, bool writable, bool bss);
+    void addRelaSectionHandler(const char* name);
+
     Disassembler::Symbol* getSymbol(size_t addr);
     
 
@@ -66,4 +87,5 @@ private:
     csh m_Handle;
     std::vector<Disassembler::SymRef> m_SymRefs;
     std::vector<Disassembler::Symbol> m_Syms;
+    std::vector<Disassembler::SectionHandler> m_SectionHandlers;
 };
