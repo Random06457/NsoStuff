@@ -6,17 +6,78 @@
 #include "Disassembler.hpp"
 #include <memory>
 
-#define ASM_DIR "out"
+void showUsage(std::string error, char** argv);
 
-#define ARG_PROG    0
-#define ARG_INPUT   1
-#define ARG_MODE    2
-#define ARG_OUTPUT  3
+struct ArgReader
+{
+    char** m_Argv;
+    size_t m_Argc;
+    size_t m_ArgIdx;
+
+    ArgReader(int argc, char** argv)
+    {
+        m_Argc = argc;
+        m_Argv = argv;
+        m_ArgIdx = 0;
+    }
+    bool canRead() { return m_ArgIdx < m_Argc; }
+    const char* read() { return canRead() ? m_Argv[m_ArgIdx++] : nullptr; }
+};
+
+template<class T>
+std::unique_ptr<T> getFileFromArgs(ArgReader* reader)
+{
+    const char* file = reader->read();
+    if (!Utils::FileExists(file))
+        showUsage("Input file does not exist", reader->m_Argv);
+    return std::make_unique<T>(file);
+}
+
+struct ModeHandler
+{
+    const char* name;
+    std::vector<std::string> args;
+    std::function<void(ArgReader*)> callback;
+};
+
+std::vector<ModeHandler> g_Handlers =
+{
+    { "info", { "input.nso" },
+        [] (ArgReader* reader) {
+            auto nso = getFileFromArgs<Nso>(reader);
+            nso->printInfo();
+    }, },
+
+    { "decompress", { "input.nso", "output.nso" },
+        [] (ArgReader* reader) {
+            size_t argIdx = 2;
+            auto nso = getFileFromArgs<Nso>(reader);
+            nso->saveDecompressed(reader->read());
+    }, },
+
+    { "disassemble", { "input.nso", "output folder" },
+        [] (ArgReader* reader) {
+            size_t argIdx = 2;
+            auto nso = getFileFromArgs<Nso>(reader);
+            const char* folder = reader->read();
+            
+            mkdir(folder, 0777);
+            Disassembler::process(nso.get(), folder);
+    }, },
+};
 
 void showUsage(std::string error, char** argv)
 {
     std::cout << "ERROR: " << error << std::endl;
-    std::cout << "Usage: " << argv[ARG_PROG] << " <input file> <mode> (<output>)" << std::endl;
+    std::cout << "Usage: " << argv[0] << " <mode> ..." << std::endl;
+    for (auto handler : g_Handlers)
+    {
+        std::cout << "\t- " << handler.name;
+        for (auto arg : handler.args)
+            std::cout << " <" << arg << ">";
+        std::cout << std::endl;
+    }
+    
     exit(1);
 }
 
@@ -25,35 +86,31 @@ int main(int argc, char** argv)
     std::cout << "args:" << std::endl;
     for (size_t i = 0; i < argc; i++)
         std::cout << "\t[" << i << "] \"" << argv[i] << "\"" << std::endl;
+    std::cout << std::endl;
 
-    if (argc <= 2)
+    ArgReader reader(argc, argv);
+
+    reader.read(); // program name
+    if (!reader.canRead())
         showUsage("Too few arguments", argv);
 
-    if (!Utils::FileExists(argv[ARG_INPUT]))
-        showUsage("Input file does not exist", argv);
-    
-    std::unique_ptr<Nso> nso = std::make_unique<Nso>(argv[ARG_INPUT]);
-
-    if (argc == 3)
+    const char* mode = reader.read();
+    bool found = false;
+    for (auto handler : g_Handlers)
     {
-        if (!strcmp("info", argv[ARG_MODE]))
-            nso->printInfo();
-        else showUsage(std::string("Invalid mode : ") + argv[ARG_MODE], argv);
+        if (!strcmp(handler.name, mode))
+        {
+            if (argc != 2 + handler.args.size())
+                showUsage("Invalid argument count", argv);
+            
+            handler.callback(&reader);
+            found = true;
+            break;
+        }
     }
 
-    if (argc == 4)
-    {
-        if (!strcmp(argv[ARG_MODE], "decompress"))
-        {
-            nso->saveDecompressed(argv[ARG_OUTPUT]);
-        }
-        else if (!strcmp(argv[ARG_MODE], "disassemble"))
-        {
-            mkdir(ASM_DIR, 0777);
-            Disassembler::process(nso.get(), argv[ARG_OUTPUT]);
-        }
-        else showUsage(std::string("Invalid mode : ") + argv[ARG_MODE], argv);
-    }
+    if (!found)
+        showUsage("Invalid mode", argv);
     
     return 0;
 }
