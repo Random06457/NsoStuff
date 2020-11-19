@@ -3,3 +3,5 @@ nsostuff
 out/*
 input/
 .vscode/*
+*.elf
+*.nso

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Nso.hpp"
+#include "NsoFile.hpp"
 #include <capstone/capstone.h>
 #include <functional>
 
@@ -17,13 +17,13 @@ private:
     {
         
     public:
-        Symbol(Elf64_Sym* sym, Nso* nso) :
+        Symbol(Elf64_Sym* sym, NsoFile* nso) :
             m_Sym(sym),
             m_Addr(sym->st_value),
             m_Name(nso->rodata<char>(nso->m_Header.dynStr.off + m_Sym->st_name))
         {
         }
-        Symbol(size_t addr, Nso* nso) :
+        Symbol(size_t addr, NsoFile* nso) :
             m_Sym(nullptr),
             m_Addr(addr)
         {
@@ -46,9 +46,9 @@ private:
         std::string m_Name;
         const char* m_Perms;
         bool m_Progbits;
-        std::function<void(FILE*, Nso::Section*)> m_Handler;
+        std::function<void(FILE*, NsoFile::Section*)> m_Handler;
 
-        SectionHandler(const char* name, const char* perms, bool progbits, std::function<void(FILE*, Nso::Section*)> handler) :
+        SectionHandler(const char* name, const char* perms, bool progbits, std::function<void(FILE*, NsoFile::Section*)> handler) :
             m_Name(name),
             m_Perms(perms),
             m_Progbits(progbits),
@@ -59,11 +59,11 @@ private:
     
 
 private:
-    Disassembler(Nso* nso, std::string asmDir);
+    Disassembler(NsoFile* nso, std::string asmDir);
     ~Disassembler();
 
 public:
-    static void process(Nso* nso, std::string asmDir);
+    static void process(NsoFile* nso, std::string asmDir);
 
 private:
     void findSymRefs();
@@ -82,7 +82,7 @@ private:
     
 
 private:
-    Nso* m_Nso;
+    NsoFile* m_Nso;
     std::string m_AsmDir;
     csh m_Handle;
     std::vector<Disassembler::SymRef> m_SymRefs;

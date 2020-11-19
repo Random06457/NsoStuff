@@ -2,7 +2,8 @@
 #include <exception>
 #include <sys/stat.h>
 #include "Utils.hpp"
-#include "Nso.hpp"
+#include "NsoFile.hpp"
+#include "ElfConvert.hpp"
 #include "Disassembler.hpp"
 #include <memory>
 
@@ -42,23 +43,35 @@ struct ModeHandler
 
 std::vector<ModeHandler> g_Handlers =
 {
+    /*
+    { "elf2nso", { "input.elf", "output.nso" },
+        [] (ArgReader* reader) {
+        }
+    },
+    */
+    { "nso2elf", { "input.nso", "output.elf" },
+        [] (ArgReader* reader) {
+            auto nso = getFileFromArgs<NsoFile>(reader);
+            ElfConvert::nso2elf(nso.get(), reader->read());
+        }
+    },
     { "info", { "input.nso" },
         [] (ArgReader* reader) {
-            auto nso = getFileFromArgs<Nso>(reader);
+            auto nso = getFileFromArgs<NsoFile>(reader);
             nso->printInfo();
     }, },
 
     { "decompress", { "input.nso", "output.nso" },
         [] (ArgReader* reader) {
             size_t argIdx = 2;
-            auto nso = getFileFromArgs<Nso>(reader);
-            nso->saveDecompressed(reader->read());
+            auto nso = getFileFromArgs<NsoFile>(reader);
+            nso->writeDecompressed(reader->read());
     }, },
 
     { "disassemble", { "input.nso", "output folder" },
         [] (ArgReader* reader) {
             size_t argIdx = 2;
-            auto nso = getFileFromArgs<Nso>(reader);
+            auto nso = getFileFromArgs<NsoFile>(reader);
             const char* folder = reader->read();
             
             mkdir(folder, 0777);

@@ -4,7 +4,7 @@ BUILD := build
 SRC := src
 TARGET := nsostuff
 
-OBJS = $(addprefix $(BUILD)/, lz4.o main.o Nso.o Utils.o sha256.o Disassembler.o)
+OBJS = $(addprefix $(BUILD)/, $(patsubst src/%.c,%.o,$(wildcard src/*.c)) $(patsubst src/%.cpp,%.o,$(wildcard src/*.cpp)))
 
 ARCH	:=	-march=armv8-a+crc+crypto -mtune=cortex-a57
 
@@ -16,7 +16,7 @@ $(BUILD)/%.o: $(SRC)/%.cpp
 	@echo Building $@
 	g++ -g -c $< -o $@
 
-$(BUILDDIR)/%.o: %.s
+$(BUILD)/%.o: %.s
 	@echo Building $@
 	g++ -c $< -o $@
 

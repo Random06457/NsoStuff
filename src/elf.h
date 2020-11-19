@@ -66,6 +66,7 @@ struct Elf64_Phdr {
 #define PT_NULL        0
 #define PT_LOAD        1
 #define PT_DYNAMIC    2
+#define PT_NOTE    4
 #define PT_LOOS        0x60000000ul
 #define PT_HIOS        0x6ffffffful
 #define PT_LOPROC    0x70000000ul

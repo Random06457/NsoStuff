@@ -7,7 +7,7 @@
 #define CODE_BUF_SIZE    0x1000
 #define ELEMENT_EXISTS(vec, element) (std::find(vec.begin(), vec.end(), element) != vec.end())
 
-Disassembler::Disassembler(Nso* nso, std::string asmDir) :
+Disassembler::Disassembler(NsoFile* nso, std::string asmDir) :
     m_Nso(nso),
     m_AsmDir(asmDir),
     m_Handle(0),
@@ -27,7 +27,7 @@ Disassembler::~Disassembler()
     cs_close(&m_Handle);
 }
 
-void Disassembler::process(Nso* nso, std::string asmDir)
+void Disassembler::process(NsoFile* nso, std::string asmDir)
 {
     Disassembler* dis = new Disassembler(nso, asmDir);
 
@@ -84,14 +84,14 @@ void Disassembler::writeLd()
             std::string curSeg;
             switch (m_Nso->getSegmentType(s.start()))
             {
-            case Nso::SegmentType::text:
+            case NsoFile::SegmentType::text:
                 curSeg = "text";
                 break;
-            case Nso::SegmentType::rodata:
+            case NsoFile::SegmentType::rodata:
                 curSeg = "rodata";
                 break;
-            case Nso::SegmentType::data:
-            case Nso::SegmentType::bss:
+            case NsoFile::SegmentType::data:
+            case NsoFile::SegmentType::bss:
                 curSeg = "data";
                 break;
             
@@ -111,11 +111,11 @@ void Disassembler::writeLd()
 void Disassembler::disassemble()
 {
     FILE* f;
-    Nso::Section* s;
+    NsoFile::Section* s;
 
     /* .text sections */
 
-    m_SectionHandlers.push_back(Disassembler::SectionHandler(".crt0", "ax", true, [this] (FILE* f, Nso::Section* s) {
+    m_SectionHandlers.push_back(Disassembler::SectionHandler(".crt0", "ax", true, [this] (FILE* f, NsoFile::Section* s) {
         writeTextAsm(f, s->start(), 4);
         fprintf(f, "/* %08lX */ .word __mod0_start\n\n", s->start()+4);
         writeTextAsm(f, s->start()+8, s->size()-8);
@@ -129,7 +129,7 @@ void Disassembler::disassemble()
 
     /* .rodata sections */ 
 
-    m_SectionHandlers.push_back(Disassembler::SectionHandler(".module_name", "a", true, [this] (FILE* f, Nso::Section* s) {
+    m_SectionHandlers.push_back(Disassembler::SectionHandler(".module_name", "a", true, [this] (FILE* f, NsoFile::Section* s) {
         fprintf(f, ".word 0x%X\n", *m_Nso->mem<u32>(s->start() + 0));
         char* name = m_Nso->mem<char>(s->start() + 8);
         u32 nameSize = *m_Nso->mem<u32>(s->start() + 4);
@@ -148,7 +148,7 @@ void Disassembler::disassemble()
     addRelaSectionHandler(".rela.dyn");
     addRelaSectionHandler(".rela.plt");
 
-    m_SectionHandlers.push_back(Disassembler::SectionHandler(".hash", "a", true, [this] (FILE* f, Nso::Section* s) {
+    m_SectionHandlers.push_back(Disassembler::SectionHandler(".hash", "a", true, [this] (FILE* f, NsoFile::Section* s) {
         auto hash = m_Nso->mem<Elf64_Hash>(s->start());
         fprintf(f, ".word 0x%X /* nbuckets */\n", hash->nbuckets);
         fprintf(f, ".word 0x%X /* nchains */\n", hash->nchains);
@@ -162,7 +162,7 @@ void Disassembler::disassemble()
             fprintf(f, ".word 0x%X\n", hash->data[hash->nbuckets+i]);
     }));
 
-    m_SectionHandlers.push_back(Disassembler::SectionHandler(".gnu.hash", "a", true, [this] (FILE* f, Nso::Section* s) {
+    m_SectionHandlers.push_back(Disassembler::SectionHandler(".gnu.hash", "a", true, [this] (FILE* f, NsoFile::Section* s) {
         auto hash = m_Nso->mem<Elf64_GnuHash>(s->start());
         fprintf(f, ".word 0x%X /* nbuckets */\n", hash->nbuckets);
         fprintf(f, ".word 0x%X /* symndx */\n", hash->symndx);
@@ -195,7 +195,7 @@ void Disassembler::disassemble()
             fprintf(f, ".word 0x%X\n", chains[i]);
     }));
 
-    m_SectionHandlers.push_back(Disassembler::SectionHandler(".dynsym", "a", true, [this] (FILE* f, Nso::Section* s) {
+    m_SectionHandlers.push_back(Disassembler::SectionHandler(".dynsym", "a", true, [this] (FILE* f, NsoFile::Section* s) {
         Elf64_Sym* sym = m_Nso->mem<Elf64_Sym>(s->start());
         for (size_t i = 0; i < s->size() / sizeof(Elf64_Sym); i++)
         {
@@ -209,7 +209,7 @@ void Disassembler::disassemble()
         }
     }));
     
-    m_SectionHandlers.push_back(Disassembler::SectionHandler(".dynstr", "a", true, [this] (FILE* f, Nso::Section* s) {
+    m_SectionHandlers.push_back(Disassembler::SectionHandler(".dynstr", "a", true, [this] (FILE* f, NsoFile::Section* s) {
         
         const char* str = m_Nso->mem<char>(s->start());
         for (size_t i = 0; i < s->size();)
@@ -223,7 +223,7 @@ void Disassembler::disassemble()
 
     addDataSectionHandler(".rodata", false, false);
 
-    m_SectionHandlers.push_back(Disassembler::SectionHandler(".eh_frame_hdr", "a", true, [this] (FILE* f, Nso::Section* s) {
+    m_SectionHandlers.push_back(Disassembler::SectionHandler(".eh_frame_hdr", "a", true, [this] (FILE* f, NsoFile::Section* s) {
         auto ehFrameHdr = m_Nso->mem<EhFrameHdr>(s->start());
         fprintf(f, "eh_frame_hdr_start:\n");
         fprintf(f, ".byte 0x%X /* version */\n", ehFrameHdr->version);
@@ -242,7 +242,7 @@ void Disassembler::disassemble()
     
     addDataSectionHandler(".misc_start", false, false);
 
-    m_SectionHandlers.push_back(Disassembler::SectionHandler(".mod0", "a", true, [this] (FILE* f, Nso::Section* s) {
+    m_SectionHandlers.push_back(Disassembler::SectionHandler(".mod0", "a", true, [this] (FILE* f, NsoFile::Section* s) {
         fprintf(f, ".word 0\n");
         fprintf(f, ".word 8\n");
         fprintf(f, "__mod0_start:\n");
@@ -255,7 +255,7 @@ void Disassembler::disassemble()
         fprintf(f, ".word 0x%08X\n", m_Nso->m_Mod0->modObjectOff);
     }));
 
-    m_SectionHandlers.push_back(Disassembler::SectionHandler(".note.gnu.build-id", "a", true, [this] (FILE* f, Nso::Section* s) {
+    m_SectionHandlers.push_back(Disassembler::SectionHandler(".note.gnu.build-id", "a", true, [this] (FILE* f, NsoFile::Section* s) {
         fprintf(f, ".word 0x%X /* n_namesz */\n", m_Nso->m_GnuBuildIdNote->n_namesz);
         fprintf(f, ".word 0x%X /* n_descsz */\n", m_Nso->m_GnuBuildIdNote->n_descsz);
         fprintf(f, ".word 0x%X /* n_type */\n", m_Nso->m_GnuBuildIdNote->n_type);
@@ -272,7 +272,7 @@ void Disassembler::disassemble()
 
     addDataSectionHandler(".data", true, false);
 
-    m_SectionHandlers.push_back(Disassembler::SectionHandler(".dynamic", "aw", true, [this] (FILE* f, Nso::Section* s) {
+    m_SectionHandlers.push_back(Disassembler::SectionHandler(".dynamic", "aw", true, [this] (FILE* f, NsoFile::Section* s) {
         Elf64_Dyn* dyn = m_Nso->mem<Elf64_Dyn>(s->start());
         for (size_t i = 0; i < s->size() / sizeof(Elf64_Dyn); i++)
             fprintf(f, ".quad 0x%llX, 0x%llX /* %s */\n", dyn[i].d_tag, dyn[i].d_un, Elf64_Dyn::getTagName(dyn[i].d_tag));
@@ -524,13 +524,13 @@ void Disassembler::generateSymbols()
 
 void Disassembler::addTextSectionHandler(const char* name)
 {
-    m_SectionHandlers.push_back(Disassembler::SectionHandler(name, "ax", true, [this] (FILE* f, Nso::Section* s) {
+    m_SectionHandlers.push_back(Disassembler::SectionHandler(name, "ax", true, [this] (FILE* f, NsoFile::Section* s) {
         writeTextAsm(f, s->start(), s->size());
     }));
 }
 void Disassembler::addDataSectionHandler(const char* name, bool writable, bool bss)
 {
-    m_SectionHandlers.push_back(Disassembler::SectionHandler(name, writable ? "aw" : "a", !bss, [this, bss] (FILE* f, Nso::Section* s) {
+    m_SectionHandlers.push_back(Disassembler::SectionHandler(name, writable ? "aw" : "a", !bss, [this, bss] (FILE* f, NsoFile::Section* s) {
         writeDataAsm(f, s->start(), s->size(), bss);
     }));
 }
@@ -538,7 +538,7 @@ void Disassembler::addDataSectionHandler(const char* name, bool writable, bool b
 
 void Disassembler::addRelaSectionHandler(const char* name)
 {
-    m_SectionHandlers.push_back(Disassembler::SectionHandler(name, "a", true, [this] (FILE* f, Nso::Section* s) {
+    m_SectionHandlers.push_back(Disassembler::SectionHandler(name, "a", true, [this] (FILE* f, NsoFile::Section* s) {
         Elf64_Rela* rela = m_Nso->mem<Elf64_Rela>(s->start());
         for (size_t i = 0; i < s->size() / sizeof(Elf64_Rela); i++)
             fprintf(f, ".quad 0x%llX, 0x%llX, 0x%llX\n", rela[i].r_offset, rela[i].r_info, rela[i].r_addend);

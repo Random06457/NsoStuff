@@ -10,7 +10,9 @@
 #define ALIGN8(addr) (((addr) + 7) & ~7)
 #define ALIGN16(addr) (((addr) + 0xF) & ~0xF)
 
-class Nso
+class ElfFile;
+
+class NsoFile
 {
 public:
     struct ModuleName
@@ -144,15 +146,16 @@ public:
     };
     
 public:
-    Nso(std::string path);
-    ~Nso();
+    NsoFile(ElfFile* elf);
+    NsoFile(std::string path);
+    ~NsoFile();
 
 public:
     void printInfo();
     std::string getModuleName();
     std::vector<std::string> getLibraries();
-    void saveDecompressed(std::string path);
-    void saveCompressed(std::string path);
+    void writeDecompressed(std::string path);
+    void writeCompressed(std::string path);
 
     inline Elf64_Dyn* getElf64Dyns() const { return (Elf64_Dyn*)((char*)m_Mod0 + m_Mod0->dynOff); }
     inline Elf64_Dyn* getElf64Dyn(u64 tag) const

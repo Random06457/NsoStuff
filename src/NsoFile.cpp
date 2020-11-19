@@ -3,24 +3,24 @@
 #include <exception>
 #include "lz4.h"
 #include "sha256.h"
-#include "Nso.hpp"
+#include "NsoFile.hpp"
 #include "Utils.hpp"
 #include <algorithm>
 
 
-bool Nso::SegmentHash::isValid(void* mem, SegmentHeader& hdr)
+bool NsoFile::SegmentHash::isValid(void* mem, SegmentHeader& hdr)
 {
     u8 hash[32];
     sha256_hash(hash, (u8*)mem + hdr.addr, hdr.size);
     return memcmp(hash, data, 32) == 0;
 }
 
-void Nso::SegmentHash::update(void* mem, SegmentHeader& hdr)
+void NsoFile::SegmentHash::update(void* mem, SegmentHeader& hdr)
 {
     sha256_hash(data, (u8*)mem + hdr.addr, hdr.size);
 }
 
-Nso::Nso(std::string path) :
+NsoFile::NsoFile(std::string path) :
     m_Header(),
     m_Mod0(nullptr),
     m_GnuBuildIdNote(nullptr),
@@ -29,7 +29,7 @@ Nso::Nso(std::string path) :
     m_Sections()
 {
     FILE* f = fopen(path.c_str(), "rb");
-    fread(&m_Header, 1, sizeof(Nso::Header), f);
+    fread(&m_Header, 1, sizeof(NsoFile::Header), f);
 
     size_t memSize = ALIGN_MEM(m_Header.data.addr + m_Header.data.size);
     m_Mem.reserve(memSize);
@@ -42,7 +42,7 @@ Nso::Nso(std::string path) :
 
     // get mod0
     u32 modAddr = getMod0Pointer();
-    m_Mod0 = mem<Nso::Mod0>(modAddr);
+    m_Mod0 = mem<NsoFile::Mod0>(modAddr);
     if (!m_Mod0 || !m_Mod0->magic.isValid())
         throw std::runtime_error("Could not find MOD0");
 
@@ -51,11 +51,11 @@ Nso::Nso(std::string path) :
     findElfSections();
 }
 
-Nso::~Nso()
+NsoFile::~NsoFile()
 {
 }
 
-void Nso::processSection(FILE* f, SegmentHeader& hdr, u32 encSize, bool compressed)
+void NsoFile::processSection(FILE* f, SegmentHeader& hdr, u32 encSize, bool compressed)
 {
     fseek(f, hdr.off, SEEK_SET);
 
@@ -72,7 +72,7 @@ void Nso::processSection(FILE* f, SegmentHeader& hdr, u32 encSize, bool compress
         fread(mem(hdr.addr), 1, encSize, f);
 }
 
-void Nso::printInfo()
+void NsoFile::printInfo()
 {
     #define RANGE(off, size) off, off+size, size
 
@@ -148,13 +148,13 @@ void Nso::printInfo()
     
 }
 
-std::string Nso::getModuleName()
+std::string NsoFile::getModuleName()
 {
     ModuleName* module = rodata<ModuleName>();
     return std::string(module->name, module->size);
 }
 
-std::vector<std::string> Nso::getLibraries()
+std::vector<std::string> NsoFile::getLibraries()
 {
     std::vector<std::string> libs;
 
@@ -174,7 +174,7 @@ std::vector<std::string> Nso::getLibraries()
     
 }
 
-void Nso::saveDecompressed(std::string path)
+void NsoFile::writeDecompressed(std::string path)
 {
     m_Header.textCompressed = false;
     m_Header.rodataCompressed = false;
@@ -187,8 +187,8 @@ void Nso::saveDecompressed(std::string path)
 
     // update module name
     char moduleName[1];
-    u32 off = sizeof(Nso::Header);
-    m_Header.moduleNameOff = sizeof(Nso::Header);
+    u32 off = sizeof(NsoFile::Header);
+    m_Header.moduleNameOff = sizeof(NsoFile::Header);
     m_Header.moduleNameSize = sizeof(moduleName);
     off += sizeof(moduleName);
 
@@ -209,7 +209,7 @@ void Nso::saveDecompressed(std::string path)
 
     // write file
     FILE* f = fopen(path.c_str(), "wb");
-    fwrite(&m_Header, 1, sizeof(Nso::Header), f);
+    fwrite(&m_Header, 1, sizeof(NsoFile::Header), f);
     fwrite(moduleName, 1, sizeof(moduleName), f);
     fwrite(text(), 1, m_Header.text.size, f);
     fwrite(rodata(), 1, m_Header.rodata.size, f);
@@ -218,7 +218,7 @@ void Nso::saveDecompressed(std::string path)
 
     printf("done!\n");
 }
-void Nso::saveCompressed(std::string path)
+void NsoFile::writeCompressed(std::string path)
 {
     m_Header.textCompressed = true;
     m_Header.rodataCompressed = true;
@@ -231,8 +231,8 @@ void Nso::saveCompressed(std::string path)
 
     // update module name
     char moduleName[1];
-    u32 off = sizeof(Nso::Header);
-    m_Header.moduleNameOff = sizeof(Nso::Header);
+    u32 off = sizeof(NsoFile::Header);
+    m_Header.moduleNameOff = sizeof(NsoFile::Header);
     m_Header.moduleNameSize = sizeof(moduleName);
     off += sizeof(moduleName);
 
@@ -244,7 +244,7 @@ void Nso::saveCompressed(std::string path)
 
     FILE* f = fopen(path.c_str(), "wb");
     // temp
-    fwrite(&m_Header, 1, sizeof(Nso::Header), f);
+    fwrite(&m_Header, 1, sizeof(NsoFile::Header), f);
     fwrite(moduleName, 1, sizeof(moduleName), f);
 
     m_Header.text.off = off;
@@ -267,13 +267,13 @@ void Nso::saveCompressed(std::string path)
 
     // rewrite header
     fseek(f, 0, SEEK_SET);
-    fwrite(&m_Header, 1, sizeof(Nso::Header), f);
+    fwrite(&m_Header, 1, sizeof(NsoFile::Header), f);
     fclose(f);
 
     printf("done!\n");
 }
 
-size_t Nso::getFiniSize(size_t start)
+size_t NsoFile::getFiniSize(size_t start)
 {
     for (size_t addr = start; addr < m_Header.text.addr + m_Header.text.size; addr += 4)
         if ((*text<u32>(addr) & 0xff000000) == 0x14000000) // b off
@@ -282,7 +282,7 @@ size_t Nso::getFiniSize(size_t start)
     throw std::runtime_error("Could not get .fini size");
 }
 
-size_t Nso::getPltStart(size_t pltSize)
+size_t NsoFile::getPltStart(size_t pltSize)
 {
     size_t textStart = m_Header.text.addr;
     size_t textEnd = textStart + m_Header.text.size;
@@ -313,7 +313,7 @@ size_t Nso::getPltStart(size_t pltSize)
     throw std::runtime_error("Could not get .plt size");
 }
 
-size_t Nso::findNoteGnuBuildId()
+size_t NsoFile::findNoteGnuBuildId()
 {
     for (size_t i = ALIGN4(m_Header.data.addr - 0x14); i >= m_Header.rodata.addr; i -= 4)
         if (!memcmp(mem(i), "\3\0\0\0GNU\0", 8))
@@ -323,13 +323,13 @@ size_t Nso::findNoteGnuBuildId()
 }
 
 
-Nso::SegmentType Nso::getSegmentType(size_t addr)
+NsoFile::SegmentType NsoFile::getSegmentType(size_t addr)
 {
-    if (addr >= m_Header.text.addr && addr <= m_Header.text.addr + m_Header.text.size)
+    if (addr >= m_Header.text.addr && addr < m_Header.text.addr + m_Header.text.size)
         return SegmentType::text;
-    if (addr >= m_Header.rodata.addr && addr <= m_Header.rodata.addr + m_Header.rodata.size)
+    if (addr >= m_Header.rodata.addr && addr < m_Header.rodata.addr + m_Header.rodata.size)
         return SegmentType::rodata;
-    if (addr >= m_Header.data.addr && addr <= m_Header.data.addr + m_Header.data.size)
+    if (addr >= m_Header.data.addr && addr < m_Header.data.addr + m_Header.data.size)
         return SegmentType::data;
     size_t bssStart = m_Header.data.addr + m_Header.data.size;
     if (addr >= bssStart && addr <= bssStart + m_Header.bssSize)
@@ -337,7 +337,7 @@ Nso::SegmentType Nso::getSegmentType(size_t addr)
     return SegmentType::invalid;
 }
 
-void Nso::getEhFrame(size_t ehFrameHdrStart, size_t* outStart, size_t* outSize)
+void NsoFile::getEhFrame(size_t ehFrameHdrStart, size_t* outStart, size_t* outSize)
 {
     auto ehFrameHdr = mem<EhFrameHdr>(ehFrameHdrStart);
 
@@ -359,7 +359,7 @@ void Nso::getEhFrame(size_t ehFrameHdrStart, size_t* outStart, size_t* outSize)
     *outSize = (lastFde + 4 + fde->length) - *outStart;
 }
 
-void Nso::findElfSections()
+void NsoFile::findElfSections()
 {
     auto dynInit = getElf64Dyn(DT_INIT);
     auto dynFini = getElf64Dyn(DT_FINI);
@@ -401,7 +401,7 @@ void Nso::findElfSections()
 
     // .rodata special sections
     
-    size_t size = sizeof(Nso::ModuleName) + rodata<Nso::ModuleName>()->size;
+    size_t size = sizeof(NsoFile::ModuleName) + rodata<NsoFile::ModuleName>()->size;
     m_Sections.push_back(Section(m_Header.rodata.addr, size, ".module_name"));
     // align 8
     m_Sections.push_back(Section(m_Header.rodata.addr + size, 8));
@@ -587,7 +587,7 @@ void Nso::findElfSections()
     }
 }
 
-Nso::Section* Nso::getSection(std::string name)
+NsoFile::Section* NsoFile::getSection(std::string name)
 {
     for (size_t i = 0; i < m_Sections.size(); i++)
     {
@@ -598,7 +598,7 @@ Nso::Section* Nso::getSection(std::string name)
     return nullptr;
 }
 
-size_t Nso::getAppSectionCount(std::string name)
+size_t NsoFile::getAppSectionCount(std::string name)
 {
     size_t count = 0;
 
