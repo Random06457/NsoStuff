@@ -1,4 +1,5 @@
 #pragma once
+
 #include <string>
 #include <vector>
 #include "Types.h"
@@ -26,6 +27,7 @@ struct FileMagic
 class Utils
 {
 public:
+    static void CreateDir(std::string path);
     static bool FileExists(std::string path);
     static std::vector<u8> ReadFile(std::string path);
     static void WriteFile(std::string path, void* data, size_t size);

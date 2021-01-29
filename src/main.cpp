@@ -1,11 +1,9 @@
 #include <iostream>
 #include <exception>
-#include <sys/stat.h>
-#include "Utils.hpp"
-#include "NsoFile.hpp"
-#include "ElfConvert.hpp"
-#include "Disassembler.hpp"
 #include <memory>
+#include "Utils.hpp"
+#include "Nso/NsoFile.hpp"
+#include "Disassembler.hpp"
 
 void showUsage(std::string error, char** argv);
 
@@ -21,18 +19,15 @@ struct ArgReader
         m_Argv = argv;
         m_ArgIdx = 0;
     }
-    bool canRead() { return m_ArgIdx < m_Argc; }
-    const char* read() { return canRead() ? m_Argv[m_ArgIdx++] : nullptr; }
+    inline bool canRead() { return m_ArgIdx < m_Argc; }
+    inline const char* read() { return canRead() ? m_Argv[m_ArgIdx++] : nullptr; }
+    const char* readPath() {
+        const char* file = read();
+        if (!file || !Utils::FileExists(file))
+            showUsage("Input file does no exist", m_Argv);
+        return file;
+    };
 };
-
-template<class T>
-std::unique_ptr<T> getFileFromArgs(ArgReader* reader)
-{
-    const char* file = reader->read();
-    if (!Utils::FileExists(file))
-        showUsage("Input file does not exist", reader->m_Argv);
-    return std::make_unique<T>(file);
-}
 
 struct ModeHandler
 {
@@ -43,39 +38,43 @@ struct ModeHandler
 
 std::vector<ModeHandler> g_Handlers =
 {
-    /*
     { "elf2nso", { "input.elf", "output.nso" },
         [] (ArgReader* reader) {
+            auto nso = NsoFile::fromELF(reader->readPath());
+            nso.writeCompressed(reader->read());
         }
     },
-    */
     { "nso2elf", { "input.nso", "output.elf" },
         [] (ArgReader* reader) {
-            auto nso = getFileFromArgs<NsoFile>(reader);
-            ElfConvert::nso2elf(nso.get(), reader->read());
+            auto nso = NsoFile::fromNSO(reader->readPath());
+            nso.writeELF(reader->read());
         }
     },
     { "info", { "input.nso" },
         [] (ArgReader* reader) {
-            auto nso = getFileFromArgs<NsoFile>(reader);
-            nso->printInfo();
+            auto nso = NsoFile::fromNSO(reader->readPath());
+            nso.printInfo();
     }, },
 
     { "decompress", { "input.nso", "output.nso" },
         [] (ArgReader* reader) {
-            size_t argIdx = 2;
-            auto nso = getFileFromArgs<NsoFile>(reader);
-            nso->writeDecompressed(reader->read());
+            auto nso = NsoFile::fromNSO(reader->readPath());
+            nso.writeDecompressed(reader->read());
+    }, },
+
+    { "compress", { "input.nso", "output.nso" },
+        [] (ArgReader* reader) {
+            auto nso = NsoFile::fromNSO(reader->readPath());
+            nso.writeCompressed(reader->read());
     }, },
 
     { "disassemble", { "input.nso", "output folder" },
         [] (ArgReader* reader) {
-            size_t argIdx = 2;
-            auto nso = getFileFromArgs<NsoFile>(reader);
+            auto nso = NsoFile::fromNSO(reader->readPath());
             const char* folder = reader->read();
             
-            mkdir(folder, 0777);
-            Disassembler::process(nso.get(), folder);
+            Utils::CreateDir(folder);
+            Disassembler::process(&nso, folder);
     }, },
 };
 

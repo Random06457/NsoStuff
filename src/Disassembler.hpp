@@ -1,8 +1,8 @@
 #pragma once
 
-#include "NsoFile.hpp"
-#include <capstone/capstone.h>
 #include <functional>
+#include <capstone/capstone.h>
+#include "Nso/NsoFile.hpp"
 
 class Disassembler
 {

@@ -1,11 +1,11 @@
 #include <iostream>
 #include <cstring>
 #include <exception>
-#include "lz4.h"
-#include "sha256.h"
-#include "NsoFile.hpp"
-#include "Utils.hpp"
 #include <algorithm>
+#include "../3rdparty/lz4.h"
+#include "../3rdparty/sha256.h"
+#include "../Utils.hpp"
+#include "NsoFile.hpp"
 
 
 bool NsoFile::SegmentHash::isValid(void* mem, SegmentHeader& hdr)
@@ -20,13 +20,35 @@ void NsoFile::SegmentHash::update(void* mem, SegmentHeader& hdr)
     sha256_hash(data, (u8*)mem + hdr.addr, hdr.size);
 }
 
-NsoFile::NsoFile(std::string path) :
+NsoFile::NsoFile() :
     m_Header(),
     m_Mod0(nullptr),
     m_GnuBuildIdNote(nullptr),
     m_IsBaseNso(false),
     m_Mem(),
     m_Sections()
+{
+}
+
+NsoFile NsoFile::fromELF(std::string path)
+{
+    NsoFile nso;
+
+    nso.loadELF(path);
+    nso.analyze();
+    return nso;
+}
+
+NsoFile NsoFile::fromNSO(std::string path)
+{
+    NsoFile nso;
+
+    nso.loadNSO(path);
+    nso.analyze();
+    return nso;
+}
+
+void NsoFile::loadNSO(std::string path)
 {
     FILE* f = fopen(path.c_str(), "rb");
     fread(&m_Header, 1, sizeof(NsoFile::Header), f);
@@ -39,7 +61,10 @@ NsoFile::NsoFile(std::string path) :
     processSection(f, m_Header.rodata, m_Header.rodataEncSize, m_Header.rodataCompressed);
     processSection(f, m_Header.data, m_Header.dataEncSize, m_Header.dataCompressed);
     fclose(f);
+}
 
+void NsoFile::analyze()
+{
     // get mod0
     u32 modAddr = getMod0Pointer();
     m_Mod0 = mem<NsoFile::Mod0>(modAddr);
@@ -375,6 +400,8 @@ void NsoFile::findElfSections()
     auto dynFiniArray = getElf64Dyn(DT_FINI_ARRAY);
     auto dynFiniArraySz = getElf64Dyn(DT_FINI_ARRAYSZ);
 
+    size_t apiInfoAddr = m_Header.rodata.addr + m_Header.apiInfo.off;
+    size_t apiInfoSize = m_Header.apiInfo.size;
     size_t dynSymAddr = m_Header.rodata.addr + m_Header.dynSym.off;
     size_t dynSymSize = m_Header.dynSym.size;
     size_t dynStrAddr = m_Header.rodata.addr + m_Header.dynStr.off;
@@ -461,6 +488,7 @@ void NsoFile::findElfSections()
     size_t noteSize = sizeof(Elf64_Nhdr) + m_GnuBuildIdNote->n_namesz + m_GnuBuildIdNote->n_descsz;
     m_Sections.push_back(Section(noteAddr, noteSize, ".note.gnu.build-id"));
 
+    
     // .sdk_packages after .note.gnu.build-id
     if (noteAddr == curMiscAddr)
     {
@@ -484,6 +512,14 @@ void NsoFile::findElfSections()
         // align 4
         m_Sections.push_back(Section(curMiscAddr + size, 4));
     }
+    
+    /*
+    if (apiInfoAddr != 0)
+    {
+        m_Sections.push_back(Section(apiInfoAddr, apiInfoSize, ".sdk_packages"));
+        m_Sections.push_back(Section(apiInfoAddr + apiInfoSize, 4));
+    }
+    */
 
 
 
@@ -538,21 +574,23 @@ void NsoFile::findElfSections()
     );
 
 
-    // fill sections
+    // fill app sections
 
     size_t textCount = 0, dataCount = 0, rodataCount = 0;
 
     size_t oldSize = m_Sections.size();
+    size_t lastEnd = 0;
     for (size_t i = 1; i < oldSize; i++)
     {
-        size_t curAddr = m_Sections[i].start();
-        size_t lastEnd = m_Sections[i-1].end();
+        size_t curStart = m_Sections[i].start();
+        size_t curEnd = m_Sections[i].end();
 
-        SegmentType curSegment = getSegmentType(curAddr);
-        SegmentType lastSegment = getSegmentType(lastEnd-1);
+        if (lastEnd == 0)
+            lastEnd = m_Sections[i-1].end();
 
-        if (curAddr > lastEnd)
+        if (curStart > lastEnd)
         {
+            SegmentType curSegment = getSegmentType(lastEnd);
             
             std::string name;
 
@@ -572,19 +610,22 @@ void NsoFile::findElfSections()
                 throw std::runtime_error("Invalid Segment");
             }
 
-            m_Sections.push_back(Section(lastEnd, curAddr - lastEnd, name));
-            
-            // sort sections
-            std::sort(m_Sections.begin(), m_Sections.end(),
-                [](const Section& a, const Section& b) -> bool {
-                    return (a.start() < b.start()) || (a.start() == a.end() && a.end() == b.start());
-                }
-            );
+            m_Sections.push_back(Section(lastEnd, curStart - lastEnd, name));
+            lastEnd = curEnd;
         }
-        else if (curAddr < lastEnd)
+        else if (curStart < lastEnd)
             m_Sections[i-1].m_Name += " (OVERLAPPING)";
             //throw std::runtime_error("Overlapping Sections");
+        else
+            lastEnd = curEnd;
     }
+
+    // sort sections
+    std::sort(m_Sections.begin(), m_Sections.end(),
+        [](const Section& a, const Section& b) -> bool {
+            return (a.start() < b.start()) || (a.start() == a.end() && a.end() == b.start());
+        }
+    );
 }
 
 NsoFile::Section* NsoFile::getSection(std::string name)
@@ -604,7 +645,7 @@ size_t NsoFile::getAppSectionCount(std::string name)
 
     for (size_t i = 0; i < m_Sections.size(); i++)
     {
-        if (m_Sections[i].name() == name + ((count == 0) ? "" : std::to_string(count)));
+        if (m_Sections[i].name() == name + ((count == 0) ? "" : std::to_string(count)))
             count++;
     }
 

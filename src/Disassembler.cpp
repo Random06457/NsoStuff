@@ -1,8 +1,8 @@
-#include "Disassembler.hpp"
 #include <exception>
 #include <stdexcept>
 #include <cstring>
 #include <algorithm>
+#include "Disassembler.hpp"
 
 #define CODE_BUF_SIZE    0x1000
 #define ELEMENT_EXISTS(vec, element) (std::find(vec.begin(), vec.end(), element) != vec.end())
@@ -712,7 +712,7 @@ void Disassembler::writeDataAsm(FILE* f, size_t start, size_t size, bool bss)
     {
         if (m_Syms[i].m_Addr >= start && m_Syms[i].m_Addr < start + size)
         {
-            fprintf(f, "/* 0x%08lX *_/\n", m_Syms[i].m_Addr);
+            fprintf(f, "/_* 0x%08lX *_/\n", m_Syms[i].m_Addr);
             fprintf(f, "%s:\n", m_Syms[i].m_Name.c_str());
             for (size_t j = i+1; j < m_Syms.size(); j++)
             {

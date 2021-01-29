@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Types.h"
+#include "../Types.h"
 
 struct ElfIdent {
     u32 magic;

@@ -1,29 +1,35 @@
-$(shell mkdir -p build)
-
 BUILD := build
 SRC := src
 TARGET := nsostuff
 
-OBJS = $(addprefix $(BUILD)/, $(patsubst src/%.c,%.o,$(wildcard src/*.c)) $(patsubst src/%.cpp,%.o,$(wildcard src/*.cpp)))
+SRC_DIRS = $(shell find $(SRC) -type d)
+SRC_C = $(shell find $(SRC) -name *.c)
+SRC_CPP = $(shell find $(SRC) -name *.cpp)
+SRC_ASM = $(shell find $(SRC) -name *.s)
+
+$(shell mkdir -p $(SRC_DIRS:$(SRC)%=$(BUILD)%))
+
+OBJS = 	$(SRC_C:$(SRC)/%.c=$(BUILD)/%.o) \
+		$(SRC_CPP:$(SRC)/%.cpp=$(BUILD)/%.o) \
+		$(SRC_ASM:$(SRC)/%.s=$(BUILD)/%.o)
 
 ARCH	:=	-march=armv8-a+crc+crypto -mtune=cortex-a57
 
+LD 	:= clang++
+CXX := clang++
+CC 	:= clang
+
 $(BUILD)/%.o: $(SRC)/%.c
-	@echo Building $@
-	g++ -g -c $< -o $@
+	$(CC) -g -c $< -o $@
 
 $(BUILD)/%.o: $(SRC)/%.cpp
-	@echo Building $@
-	g++ -g -c $< -o $@
+	$(CXX) -g -c $< -o $@
 
 $(BUILD)/%.o: %.s
-	@echo Building $@
-	g++ -c $< -o $@
-
-	
+	$(CC) -c $< -o $@
 
 all: $(OBJS)
-	g++ $^ -o $(TARGET) -lcapstone
+	$(LD) $^ -o $(TARGET) -lcapstone
 
 clean:
 	rm -rf $(BUILD) $(TARGET)

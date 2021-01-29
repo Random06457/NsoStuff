@@ -1,5 +1,6 @@
 #include "Utils.hpp"
 #include <fstream>
+#include <sys/stat.h>
 
 bool Utils::FileExists(std::string path)
 {
@@ -54,6 +55,18 @@ std::string Utils::hexToStr(void* data, size_t size)
     }
     str[size*2] = '\0';
     std::string ret(str);
-    delete str;
+    delete[] str;
     return ret;
+}
+
+
+void Utils::CreateDir(std::string path)
+{
+    for (size_t i = 0; i < path.size()+1; i++)
+        if (i == path.size() || path[i] == '/' || path[i] == '\\')
+        {
+            s32 res = mkdir(std::string(path, 0, i).c_str(), 0777);
+            if (res && errno != EEXIST)
+                throw std::runtime_error(("Failed to create dir : " + std::to_string(res)).c_str());
+        }
 }

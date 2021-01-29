@@ -1,8 +1,8 @@
 #pragma once
 
-#include "Types.h"
 #include <cstring>
 #include <stdexcept>
+#include "../Types.h"
 
 #define DW_EH_PE_omit       0xFF
 #define DW_EH_PE_uleb128    0x01
@@ -29,7 +29,7 @@ T decodeULEB128(void* data, size_t* outSize = nullptr)
     size_t shift = 0;
     while (*ptr >> 7)
     {
-        if (outSize) *outSize++;
+        if (outSize) outSize++;
 
         ret |= (*ptr & 0x7F) << shift;
         shift += 7;
@@ -46,7 +46,7 @@ T decodeSLEB128(void* data, size_t* outSize = nullptr)
     size_t shift = 0;
     while (*ptr >> 7)
     {
-        if (outSize) *outSize++;
+        if (outSize) outSize++;
 
         ret |= (*ptr & 0x7F) << shift;
         shift += 7;
